@@ -335,17 +335,20 @@ public class LevelDBProvider implements LevelProvider {
     }
 
     @Override
-    public void requestChunkTask(IntSet protocols, int chunkX, int chunkZ) {
-        LevelDBChunk chunk = (LevelDBChunk) this.getChunk(chunkX, chunkZ, false);
-        if (chunk == null) {
-            throw new ChunkException("Invalid Chunk Set");
-        }
+public void requestChunkTask(IntSet protocols, int chunkX, int chunkZ) {
+    LevelDBChunk chunk = (LevelDBChunk) this.getChunk(chunkX, chunkZ, false);
+    if (chunk == null) {
+        // FIX: не бросаем исключение — логируем и выходим
+        log.warn("requestChunkTask: chunk {} {} is null, skipping", chunkX, chunkZ);
+        return;
+    }
 
-        long timestamp = chunk.getChanges();
+    long timestamp = chunk.getChanges();
 
-        if (this.getServer().getSettings().world().chunk().asyncChunks()) {
-            final BaseChunk chunkClone = chunk.cloneForChunkSending();
-            this.level.getAsyncChuckExecutor().execute(() -> {
+    if (this.getServer().getSettings().world().chunk().asyncChunks()) {
+        final BaseChunk chunkClone = chunk.cloneForChunkSending();
+        this.level.getAsyncChuckExecutor().execute(() -> {
+            try {
                 NetworkChunkSerializer.serialize(protocols, chunkClone, networkChunkSerializerCallback -> {
                     getLevel().asyncChunkRequestCallback(networkChunkSerializerCallback.getProtocolId(),
                             timestamp,
@@ -355,8 +358,13 @@ public class LevelDBProvider implements LevelProvider {
                             networkChunkSerializerCallback.getStream().getBuffer()
                     );
                 }, level.isAntiXrayEnabled(), getLevel().getDimensionData());
-            });
-        } else {
+            } catch (Throwable t) {
+                // FIX: не даём потоку умереть молча — логируем
+                log.error("Failed to serialize chunk {} {} in async executor", chunkX, chunkZ, t);
+            }
+        });
+    } else {
+        try {
             NetworkChunkSerializer.serialize(protocols, chunk, networkChunkSerializerCallback -> {
                 this.getLevel().chunkRequestCallback(networkChunkSerializerCallback.getProtocolId(),
                         timestamp,
@@ -366,8 +374,12 @@ public class LevelDBProvider implements LevelProvider {
                         networkChunkSerializerCallback.getStream().getBuffer()
                 );
             }, level.isAntiXrayEnabled(), this.level.getDimensionData());
+        } catch (Throwable t) {
+            // FIX: не роняем tick — логируем
+            log.error("Failed to serialize chunk {} {} synchronously", chunkX, chunkZ, t);
         }
     }
+}
 
     @Override
     public Map<String, Object> getGeneratorOptions() {
