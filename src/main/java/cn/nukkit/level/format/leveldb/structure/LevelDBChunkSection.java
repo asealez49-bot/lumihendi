@@ -118,7 +118,6 @@ public class LevelDBChunkSection implements ChunkSection {
     public void setParent(LevelDBChunk parent) {
         this.parent = new WeakReference<>(parent);
 
-        // Set hasSkyLight based on dimension (Overworld = 0 has sky light)
         if (parent != null && parent.getProvider() != null) {
             this.hasSkyLight = parent.getProvider().getLevel().getDimensionData().getDimensionId() == 0;
         }
@@ -469,7 +468,6 @@ public class LevelDBChunkSection implements ChunkSection {
     @Override
     public byte[] getIdExtraArray(int layer) {
         log.error("Deprecated method called: getIdExtraArray");
-        // no longer supported
         return EMPTY_ID_ARRAY;
     }
 
@@ -477,7 +475,6 @@ public class LevelDBChunkSection implements ChunkSection {
     @Override
     public byte[] getIdArray(int layer) {
         log.error("Deprecated method called: getIdArray");
-        // no longer supported
         return EMPTY_ID_ARRAY;
     }
 
@@ -485,7 +482,6 @@ public class LevelDBChunkSection implements ChunkSection {
     @Override
     public byte[] getIdArray() {
         log.error("Deprecated method called: getIdArray");
-        // no longer supported
         return EMPTY_ID_ARRAY;
     }
 
@@ -493,7 +489,6 @@ public class LevelDBChunkSection implements ChunkSection {
     @Override
     public byte[] getDataArray() {
         log.error("Deprecated method called: getDataArray");
-        // no longer supported
         return EMPTY_DATA_ARRAY;
     }
 
@@ -501,7 +496,6 @@ public class LevelDBChunkSection implements ChunkSection {
     @Override
     public byte[] getDataArray(int layer) {
         log.error("Deprecated method called: getDataArray");
-        // no longer supported
         return EMPTY_DATA_ARRAY;
     }
 
@@ -509,7 +503,6 @@ public class LevelDBChunkSection implements ChunkSection {
     @Override
     public byte[] getDataExtraArray(int layer) {
         log.error("Deprecated method called: getDataExtraArray");
-        // no longer supported
         return EMPTY_DATA_ARRAY;
     }
 
@@ -651,12 +644,16 @@ public class LevelDBChunkSection implements ChunkSection {
         try {
             this.readLock.lock();
 
-            int layers = this.hasLayer(1) ? 2 : 1;
+            int layers = this.hasLayerUnsafe(1) ? 2 : 1;
 
             stream.putByte((byte) 8);
             stream.putByte((byte) layers);
 
             for (int i = 0; i < layers; i++) {
+                // FIX: если storages[i] == null — создаём пустой storage, чтобы writeTo не упал
+                if (this.storages[i] == null) {
+                    this.storages[i] = new StateBlockStorage();
+                }
                 this.storages[i].writeTo(level, protocol, stream, antiXray, blockPalette);
             }
         } finally {
