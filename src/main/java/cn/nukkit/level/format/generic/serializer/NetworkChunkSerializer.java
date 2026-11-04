@@ -33,11 +33,10 @@ public class NetworkChunkSerializer {
     private static final byte[] negativeSubChunks;
 
     static {
-        // Build up 4 SubChunks for the extended negative height
         BinaryStream stream = new BinaryStream();
         for (int i = 0; i < EXTENDED_NEGATIVE_SUB_CHUNKS; i++) {
-            stream.putByte((byte) 8); // SubChunk version
-            stream.putByte((byte) 0); // 0 layers
+            stream.putByte((byte) 8);
+            stream.putByte((byte) 0);
         }
         negativeSubChunks = stream.getBuffer();
     }
@@ -53,20 +52,23 @@ public class NetworkChunkSerializer {
 
             int subChunkCount = 0;
             ChunkSection[] sections = chunk.getSections();
-            for (int i = sections.length - 1; i >= 0; i--) {
-                if (!sections[i].isEmpty()) {
-                    subChunkCount = i + 1;
-                    break;
+            if (sections == null || sections.length == 0) {
+                subChunkCount = 0;
+            } else {
+                for (int i = sections.length - 1; i >= 0; i--) {
+                    // FIX: sections[i] может быть null — проверяем
+                    if (sections[i] != null && !sections[i].isEmpty()) {
+                        subChunkCount = i + 1;
+                        break;
+                    }
                 }
             }
 
             BinaryStream stream = ThreadCache.binaryStream.get().reset();
             NetworkChunkData networkChunkData = new NetworkChunkData(protocolId, subChunkCount, antiXray, dimensionData);
 
-
             serializeChunk(stream, chunk, sections, networkChunkData, GlobalBlockPalette.getPaletteByProtocol(protocolId));
 
-            // Border blocks
             stream.putByte((byte) 0);
             stream.put(blockEntities);
 
@@ -82,7 +84,6 @@ public class NetworkChunkSerializer {
         byte[] biomePalettes = serialize3DBiomes(chunk, chunkData.getProtocol(), maxDimensionSections);
         stream.reset();
 
-        // Overworld has negative coordinates, But the anvil world does not support it
         int writtenSections = subChunkCount;
         if (dimensionData.getDimensionId() == Level.DIMENSION_OVERWORLD && chunk.getSectionOffset() == 0) {
             stream.put(negativeSubChunks);
@@ -90,11 +91,17 @@ public class NetworkChunkSerializer {
         }
 
         for (int i = 0; i < subChunkCount; i++) {
+            // FIX: sections[i] может быть null — пишем пустую секцию
+            if (sections == null || i >= sections.length || sections[i] == null) {
+                stream.putByte((byte) 8);
+                stream.putByte((byte) 0);
+                continue;
+            }
             sections[i].writeTo(chunkData.getProtocol(), stream, chunkData.isAntiXray(), blockPalette);
         }
 
         stream.put(biomePalettes);
-        stream.putByte((byte) 0); // Border blocks
+        stream.putByte((byte) 0);
 
         chunkData.setChunkSections(writtenSections);
     }
@@ -108,8 +115,6 @@ public class NetworkChunkSerializer {
             }
             return binaryStream.getBuffer();
         } else {
-            // In 1.18 3D biome palettes were introduced. However, current world format
-            // used internally doesn't support them, so we need to convert from legacy 2D
             return convert2DBiomesTo3D(protocolId, chunk, maxDimensionSections);
         }
     }
