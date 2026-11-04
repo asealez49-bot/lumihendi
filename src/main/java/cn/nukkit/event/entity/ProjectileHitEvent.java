@@ -1,0 +1,31 @@
+package cn.nukkit.event.entity;
+
+import cn.nukkit.entity.projectile.EntityProjectile;
+import cn.nukkit.event.Cancellable;
+import cn.nukkit.level.MovingObjectPosition;
+
+/**
+ * @author MagicDroidX
+ * Nukkit Project
+ */
+public class ProjectileHitEvent extends EntityEvent implements Cancellable {
+
+    private MovingObjectPosition movingObjectPosition;
+
+    public ProjectileHitEvent(EntityProjectile entity) {
+        this(entity, null);
+    }
+
+    public ProjectileHitEvent(EntityProjectile entity, MovingObjectPosition movingObjectPosition) {
+        this.entity = entity;
+        this.movingObjectPosition = movingObjectPosition;
+    }
+
+    public MovingObjectPosition getMovingObjectPosition() {
+        return movingObjectPosition;
+    }
+
+    public void setMovingObjectPosition(MovingObjectPosition movingObjectPosition) {
+        this.movingObjectPosition = movingObjectPosition;
+    }
+}

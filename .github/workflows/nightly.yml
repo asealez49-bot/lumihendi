@@ -1,0 +1,77 @@
+name: Nightly Build
+
+on:
+  push:
+    branches:
+      - stable
+      - dev
+
+jobs:
+  build-and-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x ./gradlew
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Get project version
+        id: project_version
+        run: |
+          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        env:
+          DEVELOPMENT: true
+
+      - name: Build with Gradle
+        run: ./gradlew build
+        env:
+          DEVELOPMENT: true
+
+      - name: Find artifacts
+        id: find_artifacts
+        run: |
+          mkdir artifacts
+          find build/libs -name "*.jar" -exec cp {} artifacts/ \;
+          echo "files=$(ls artifacts | paste -sd ',' -)" >> $GITHUB_OUTPUT
+
+      - name: Create or Update Nightly Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Latest Build
+          body: |
+            **This is the latest version of Lumi built from source.**
+
+            🔗 Commit: [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+            ### Version
+            `${{ steps.project_version.outputs.version }}`
+
+            ### Artifacts
+            - `Lumi-${{ steps.project_version.outputs.version }}.jar` – includes all dependencies.
+          draft: false
+          prerelease: false
+          files: artifacts/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

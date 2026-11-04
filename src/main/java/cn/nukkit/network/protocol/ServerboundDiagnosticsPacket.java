@@ -1,0 +1,253 @@
+package cn.nukkit.network.protocol;
+
+import cn.nukkit.math.Vector3f;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * @since v712
+ */
+@ToString
+public class ServerboundDiagnosticsPacket extends DataPacket {
+
+    public static final int NETWORK_ID = ProtocolInfo.SERVERBOUND_DIAGNOSTICS_PACKET;
+
+    public float avgFps;
+    public float avgServerSimTickTimeMS;
+    public float avgClientSimTickTimeMS;
+    public float avgBeginFrameTimeMS;
+    public float avgInputTimeMS;
+    public float avgRenderTimeMS;
+    public float avgEndFrameTimeMS;
+    public float avgRemainderTimePercent;
+    public float avgUnaccountedTimePercent;
+
+    /**
+     * Memory category counters.
+     * @since v924
+     */
+    public List<MemoryCategoryCounter> memoryCategoryValues = new ArrayList<>();
+    /**
+     * Entity diagnostic timing info.
+     * @since v975
+     */
+    public List<EntityDiagnosticTimingInfo> entityDiagnostics = new ArrayList<>();
+    /**
+     * System diagnostic timing info.
+     * @since v975
+     */
+    public List<SystemDiagnosticTimingInfo> systemDiagnostics = new ArrayList<>();
+    /**
+     * Whisker scope diagnostic timing info.
+     * @since v1001
+     */
+    public List<WhiskerScopeDataSummary> whiskerScopes = new ArrayList<>();
+    /**
+     * System category diagnostics. / 系统分类诊断信息。
+     * @since v2168 v1_26_40
+     */
+    public List<SystemCategory> systemCategories = new ArrayList<>();
+
+    @Override
+    public int packetId() {
+        return NETWORK_ID;
+    }
+
+    @Override
+    public byte pid() {
+        throw new UnsupportedOperationException("Not supported.");
+    }
+
+    @Override
+    public void decode() {
+        this.avgFps = this.getLFloat();
+        this.avgServerSimTickTimeMS = this.getLFloat();
+        this.avgClientSimTickTimeMS = this.getLFloat();
+        this.avgBeginFrameTimeMS = this.getLFloat();
+        this.avgInputTimeMS = this.getLFloat();
+        this.avgRenderTimeMS = this.getLFloat();
+        this.avgEndFrameTimeMS = this.getLFloat();
+        this.avgRemainderTimePercent = this.getLFloat();
+        this.avgUnaccountedTimePercent = this.getLFloat();
+
+        if (this.protocol >= ProtocolInfo.v1_26_0) {
+            this.memoryCategoryValues = new ArrayList<>();
+            this.getArray(this.memoryCategoryValues, bs -> new MemoryCategoryCounter(bs.getByte(), bs.getLLong()));
+        }
+
+        if (this.protocol >= ProtocolInfo.v1_26_20_26) {
+            boolean v2192 = this.protocol >= ProtocolInfo.v1_26_50;
+            this.entityDiagnostics = new ArrayList<>();
+            this.getArray(this.entityDiagnostics, bs -> new EntityDiagnosticTimingInfo(bs.getString(), bs.getString(), bs.getLLong(), (byte) bs.getByte(),
+                    // trailing position + dimension added in v2192
+                    v2192 ? bs.getVector3f() : null,
+                    v2192 ? bs.getString() : null));
+
+            this.systemDiagnostics = new ArrayList<>();
+            this.getArray(this.systemDiagnostics, bs -> new SystemDiagnosticTimingInfo(bs.getString(), bs.getLLong(), bs.getLLong(), (byte) bs.getByte()));
+        }
+
+        if (this.protocol >= ProtocolInfo.v1_26_30 && this.protocol < ProtocolInfo.v1_26_40) {
+            this.whiskerScopes = new ArrayList<>();
+            this.getArray(this.whiskerScopes, bs -> new WhiskerScopeDataSummary(
+                    bs.getString(), bs.getString(), bs.getLLong(), bs.getLLong(), bs.getLLong()));
+        }
+
+        if (this.protocol >= ProtocolInfo.v1_26_40) {
+            this.systemCategories = new ArrayList<>();
+            this.getArray(this.systemCategories, bs -> new SystemCategory(
+                    bs.getString(), bs.getLLong()));
+
+            this.whiskerScopes = new ArrayList<>();
+            this.getArray(this.whiskerScopes, bs -> new WhiskerScopeDataSummary(
+                    bs.getString(), bs.getString(), bs.getLLong(), bs.getLLong(), bs.getLLong()));
+        }
+    }
+
+    @Override
+    public void encode() {
+        this.putLFloat(this.avgFps);
+        this.putLFloat(this.avgServerSimTickTimeMS);
+        this.putLFloat(this.avgClientSimTickTimeMS);
+        this.putLFloat(this.avgBeginFrameTimeMS);
+        this.putLFloat(this.avgInputTimeMS);
+        this.putLFloat(this.avgRenderTimeMS);
+        this.putLFloat(this.avgEndFrameTimeMS);
+        this.putLFloat(this.avgRemainderTimePercent);
+        this.putLFloat(this.avgUnaccountedTimePercent);
+
+        if (this.protocol >= ProtocolInfo.v1_26_0) {
+            this.putArray(this.memoryCategoryValues, counter -> {
+                this.putByte((byte) counter.category);
+                this.putLLong(counter.currentBytes);
+            });
+        }
+
+        if (this.protocol >= ProtocolInfo.v1_26_20_26) {
+            boolean v2192 = this.protocol >= ProtocolInfo.v1_26_50;
+            this.putArray(this.entityDiagnostics, info -> {
+                this.putString(info.displayName);
+                this.putString(info.entity);
+                this.putLLong(info.timeInNs);
+                this.putByte(info.percentOfTotal);
+                if (v2192) {
+                    // trailing position + dimension added in v2192
+                    this.putVector3f(info.position);
+                    this.putString(info.dimension != null ? info.dimension : "");
+                }
+            });
+
+            this.putArray(this.systemDiagnostics, info -> {
+                this.putString(info.displayName);
+                this.putLLong(info.systemIndex);
+                this.putLLong(info.timeInNs);
+                this.putByte(info.percentOfTotal);
+            });
+        }
+
+        if (this.protocol >= ProtocolInfo.v1_26_30 && this.protocol < ProtocolInfo.v1_26_40) {
+            this.putArray(this.whiskerScopes, info -> {
+                this.putString(info.label);
+                this.putString(info.indentation);
+                this.putLLong(info.totalHighCostNS);
+                this.putLLong(info.totalMidCostNS);
+                this.putLLong(info.totalLowCostNS);
+            });
+        }
+
+        if (this.protocol >= ProtocolInfo.v1_26_40) {
+            this.putArray(this.systemCategories, info -> {
+                this.putString(info.categoryName);
+                this.putLLong(info.systemIndex);
+            });
+
+            this.putArray(this.whiskerScopes, info -> {
+                this.putString(info.label);
+                this.putString(info.indentation);
+                this.putLLong(info.totalHighCostNS);
+                this.putLLong(info.totalMidCostNS);
+                this.putLLong(info.totalLowCostNS);
+            });
+        }
+    }
+
+    /**
+     * Memory category counter data.
+     * @since v924
+     */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class MemoryCategoryCounter {
+        public int category;
+        public long currentBytes;
+    }
+
+    /**
+     * Entity diagnostic timing info.
+     * @since v975
+     */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class EntityDiagnosticTimingInfo {
+        public String displayName;
+        public String entity;
+        public long timeInNs;
+        public byte percentOfTotal;
+        /**
+         * @since v2192 v1_26_50
+         */
+        public Vector3f position;
+        /**
+         * @since v2192 v1_26_50
+         */
+        public String dimension;
+    }
+
+    /**
+     * System diagnostic timing info.
+     * @since v975
+     */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class SystemDiagnosticTimingInfo {
+        public String displayName;
+        public long systemIndex;
+        public long timeInNs;
+        public byte percentOfTotal;
+    }
+
+    /**
+     * Whisker scope diagnostic timing info.
+     * @since v1001
+     */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class WhiskerScopeDataSummary {
+        public String label;
+        public String indentation;
+        public long totalHighCostNS;
+        public long totalMidCostNS;
+        public long totalLowCostNS;
+    }
+
+    /**
+     * System category diagnostic info. / 系统分类诊断信息。
+     * @since v2168 (v1_26_40)
+     */
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class SystemCategory {
+        public String categoryName;
+        public long systemIndex;
+    }
+}

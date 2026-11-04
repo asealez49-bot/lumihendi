@@ -1,0 +1,204 @@
+package cn.nukkit.level.format.leveldb.structure;
+
+import cn.nukkit.level.DimensionData;
+import cn.nukkit.level.Level;
+import cn.nukkit.level.format.ChunkSection;
+import cn.nukkit.level.format.leveldb.LevelDBProvider;
+import cn.nukkit.level.format.leveldb.BlockStateMapping;
+import cn.nukkit.level.format.leveldb.ConnectionStateMigration;
+import cn.nukkit.level.format.leveldb.serializer.ChunkDataLoader;
+import cn.nukkit.level.util.PalettedBlockStorage;
+import cn.nukkit.nbt.tag.CompoundTag;
+import com.google.common.base.Preconditions;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import lombok.Getter;
+import org.cloudburstmc.nbt.NbtMap;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class ChunkBuilder {
+
+    ChunkState state;
+    @Getter
+    int chunkZ;
+    @Getter
+    int chunkX;
+    LevelDBProvider provider;
+    ChunkSection[] sections;
+    int[] heightMap;
+    byte[] biome2d;
+    PalettedBlockStorage[] biomes3d;
+    boolean has3dBiomes;
+    List<CompoundTag> entities;
+    List<CompoundTag> blockEntities;
+    CompoundTag extraData;
+
+    private final List<ChunkDataLoader> chunkDataLoaders = new ObjectArrayList<>();
+
+    private boolean dirty;
+    private boolean connectionStateRefreshPending;
+    private boolean detectLegacyConnectionStates;
+
+    public ChunkBuilder(int chunkX, int chunkZ, LevelDBProvider levelDBProvider) {
+        this.chunkX = chunkX;
+        this.chunkZ = chunkZ;
+        this.provider = Preconditions.checkNotNull(levelDBProvider, "levelProvider");
+    }
+
+    public ChunkBuilder chunkX(int chunkX) {
+        this.chunkX = chunkX;
+        return this;
+    }
+
+    public ChunkBuilder chunkZ(int chunkZ) {
+        this.chunkZ = chunkZ;
+        return this;
+    }
+
+    public ChunkBuilder state(ChunkState state) {
+        this.state = state;
+        return this;
+    }
+
+    public ChunkBuilder dataLoader(ChunkDataLoader chunkDataLoader) {
+        if (chunkDataLoader == null) throw new NullPointerException();
+        this.chunkDataLoaders.add(chunkDataLoader);
+        return this;
+    }
+
+    public ChunkBuilder dirty() {
+        this.dirty = true;
+        return this;
+    }
+
+    public ChunkBuilder connectionStateRefreshPending(boolean pending) {
+        this.connectionStateRefreshPending = pending;
+        return this;
+    }
+
+    /** Only disk loading opts into detection; a fresh builder starts complete. */
+    public ChunkBuilder connectionStateMigration(byte[] savedMarker) {
+        this.connectionStateRefreshPending = ConnectionStateMigration.persistedPending(savedMarker);
+        this.detectLegacyConnectionStates = ConnectionStateMigration.detectLegacyPalette(savedMarker);
+        return this;
+    }
+
+    public void observeConnectionState(NbtMap originalState) {
+        if (!this.connectionStateRefreshPending && this.detectLegacyConnectionStates
+                && ConnectionStateMigration.requiresLegacyRefresh(originalState)) {
+            this.connectionStateRefreshPending = true;
+        }
+    }
+
+    public void observeLegacyConnectionBlock(int blockId, int data) {
+        if (!this.connectionStateRefreshPending && this.detectLegacyConnectionStates) {
+            String name = BlockStateMapping.get().getState(blockId, data).getVanillaState().getString("name");
+            if (ConnectionStateMigration.requiresLegacyNumericRefresh(name)) {
+                this.connectionStateRefreshPending = true;
+            }
+        }
+    }
+
+    public ChunkBuilder levelProvider(LevelDBProvider levelProvider) {
+        this.provider = levelProvider;
+        return this;
+    }
+
+    public DimensionData getDimensionData() {
+        Preconditions.checkNotNull(provider);
+        return provider.getLevel().getDimensionData();
+    }
+
+    public ChunkBuilder sections(ChunkSection[] sections) {
+        this.sections = sections;
+        return this;
+    }
+
+    public ChunkSection[] getSections() {
+        return sections;
+    }
+
+    public ChunkBuilder heightMap(int[] heightMap) {
+        this.heightMap = heightMap;
+        return this;
+    }
+
+    public ChunkBuilder biome2d(byte[] biome2d) {
+        this.biome2d = biome2d;
+        return this;
+    }
+
+    public ChunkBuilder biomes3d(PalettedBlockStorage[] biomeStorage) {
+        this.biomes3d = biomeStorage;
+        this.has3dBiomes = true;
+        return this;
+    }
+
+    public boolean hasBiome3d() {
+        return has3dBiomes;
+    }
+
+    public ChunkBuilder entities(List<CompoundTag> entities) {
+        this.entities = entities;
+        return this;
+    }
+
+    public ChunkBuilder blockEntities(List<CompoundTag> blockEntities) {
+        this.blockEntities = blockEntities;
+        return this;
+    }
+
+    public ChunkBuilder extraData(CompoundTag extraData) {
+        this.extraData = extraData;
+        return this;
+    }
+
+    public LevelDBChunk build() {
+        Preconditions.checkNotNull(provider);
+        if (state == null) state = ChunkState.NEW;
+        if (sections == null) sections = new ChunkSection[provider.getLevel().getDimensionData().getHeight() >> 4];
+        if (heightMap == null) heightMap = new int[256];
+        if (entities == null) entities = new ArrayList<>();
+        if (blockEntities == null) blockEntities = new ArrayList<>();
+        if (extraData == null) extraData = new CompoundTag();
+        if (state == null) state = ChunkState.NEW;
+
+        LevelDBChunk levelDBChunk = new LevelDBChunk(
+                provider.getLevel(),
+                provider,
+                chunkX,
+                chunkZ,
+                sections,
+                heightMap,
+                biome2d,
+                biomes3d,
+                entities,
+                blockEntities,
+                state
+        );
+
+        this.chunkDataLoaders.forEach(loader -> loader.initChunk(levelDBChunk, this.provider));
+
+        levelDBChunk.setConnectionStateRefreshPending(this.connectionStateRefreshPending);
+
+        if (this.dirty) {
+            levelDBChunk.setAllSubChunksDirty();
+            levelDBChunk.setChanged();
+        }
+
+        return levelDBChunk;
+    }
+
+    public boolean has3dBiomes() {
+        return this.has3dBiomes;
+    }
+
+    public String debugString() {
+        return this.provider.getName() + "(x=" + this.chunkX + ", z=" + this.chunkZ + ")";
+    }
+
+    public Level getLevel() {
+        return provider.getLevel();
+    }
+}

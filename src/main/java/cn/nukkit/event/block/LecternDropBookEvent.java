@@ -1,0 +1,35 @@
+package cn.nukkit.event.block;
+
+import cn.nukkit.Player;
+import cn.nukkit.blockentity.impl.BlockEntityLectern;
+import cn.nukkit.event.Cancellable;
+import cn.nukkit.item.Item;
+
+public class LecternDropBookEvent extends BlockEvent implements Cancellable {
+    private final Player player;
+    private final BlockEntityLectern lectern;
+    private Item book;
+
+    public LecternDropBookEvent(Player player, BlockEntityLectern lectern, Item book) {
+        super(lectern.getBlock());
+        this.player = player;
+        this.lectern = lectern;
+        this.book = book;
+    }
+
+    public BlockEntityLectern getLectern() {
+        return lectern;
+    }
+
+    public Player getPlayer() {
+        return player;
+    }
+
+    public Item getBook() {
+        return book.clone();
+    }
+
+    public void setBook(Item book) {
+        this.book = book;
+    }
+}

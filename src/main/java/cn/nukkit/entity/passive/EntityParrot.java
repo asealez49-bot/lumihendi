@@ -1,0 +1,52 @@
+package cn.nukkit.entity.passive;
+
+import cn.nukkit.entity.EntityCreature;
+import cn.nukkit.entity.data.IntEntityData;
+import cn.nukkit.item.Item;
+import cn.nukkit.item.ItemNamespaceId;
+import cn.nukkit.level.format.FullChunk;
+import cn.nukkit.nbt.tag.CompoundTag;
+import cn.nukkit.utils.Utils;
+
+public class EntityParrot extends EntityCreature {
+    public static final int NETWORK_ID = 30;
+
+    private static final int[] VARIANTS = {0, 1, 2, 3, 4};
+
+    public EntityParrot(FullChunk chunk, CompoundTag nbt) {
+        super(chunk, nbt);
+    }
+
+    @Override
+    public int getNetworkId() {
+        return NETWORK_ID;
+    }
+
+    @Override
+    public float getWidth() {
+        return 0.5f;
+    }
+
+    @Override
+    public float getHeight() {
+        return 0.9f;
+    }
+
+    @Override
+    public void initEntity() {
+        this.setMaxHealth(6);
+
+        super.initEntity();
+
+        this.setDataProperty(new IntEntityData(DATA_VARIANT, getRandomVariant()));
+    }
+
+    @Override
+    public Item[] getDrops() {
+        return new Item[]{Item.get(ItemNamespaceId.FEATHER, 0, Utils.rand(1, 2))};
+    }
+
+    private static int getRandomVariant() {
+        return VARIANTS[Utils.rand(0, VARIANTS.length - 1)];
+    }
+}

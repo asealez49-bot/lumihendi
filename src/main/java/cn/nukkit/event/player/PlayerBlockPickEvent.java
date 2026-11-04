@@ -1,0 +1,33 @@
+package cn.nukkit.event.player;
+
+import cn.nukkit.Player;
+import cn.nukkit.block.Block;
+import cn.nukkit.event.Cancellable;
+import cn.nukkit.item.Item;
+
+/**
+ * @author CreeperFace
+ */
+public class PlayerBlockPickEvent extends PlayerEvent implements Cancellable {
+
+    private final Block blockClicked;
+    private Item item;
+
+    public PlayerBlockPickEvent(Player player, Block blockClicked, Item item) {
+        this.blockClicked = blockClicked;
+        this.item = item;
+        this.player = player;
+    }
+
+    public Item getItem() {
+        return item;
+    }
+
+    public void setItem(Item item) {
+        this.item = item;
+    }
+
+    public Block getBlockClicked() {
+        return blockClicked;
+    }
+}

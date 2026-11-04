@@ -1,0 +1,19 @@
+package cn.nukkit.event.player;
+
+import cn.nukkit.Player;
+import cn.nukkit.block.Block;
+import cn.nukkit.event.Cancellable;
+
+public class CraftingTableOpenEvent extends PlayerEvent implements Cancellable {
+
+    private final Block craftingTable;
+
+    public CraftingTableOpenEvent(Player player, Block craftingTable) {
+        this.player = player;
+        this.craftingTable = craftingTable;
+    }
+
+    public Block getCraftingTable() {
+        return this.craftingTable;
+    }
+}

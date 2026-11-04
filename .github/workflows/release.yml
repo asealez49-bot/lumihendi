@@ -1,0 +1,78 @@
+name: Release Project
+
+on:
+  push:
+    branches:
+      - stable
+
+jobs:
+  build-and-release:
+    permissions:
+      contents: write
+
+    runs-on: ubuntu-latest
+
+    env:
+      DEVELOPMENT: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x ./gradlew
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Get project version
+        id: project_version
+        run: |
+          VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build with Gradle
+        run: ./gradlew build
+        env:
+          DEVELOPMENT: false
+
+      - name: Find artifacts
+        id: find_artifacts
+        run: |
+          mkdir artifacts
+          find build/libs -name "*.jar" -exec cp {} artifacts/ \;
+          echo "files=$(ls artifacts | paste -sd ',' -)" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.project_version.outputs.version }}-${{ github.sha }}
+          name: Release ${{ steps.project_version.outputs.version }}
+          body: |
+            **This is the stable version of Lumi.**
+
+            🔗 Commit: [`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+
+            ### Version
+            `${{ steps.project_version.outputs.version }}`
+
+            ### Artifacts
+            ${{ steps.find_artifacts.outputs.files }}
+          draft: false
+          prerelease: false
+          files: artifacts/*.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
