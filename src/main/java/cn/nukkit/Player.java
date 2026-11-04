@@ -224,6 +224,8 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     protected Vector3 teleportPosition = null;
 
     protected int lastTeleportTick = -1;
+// FIX: дедлайн проверки телепорта — если чанки не ушли за N тиков, принудительно завершаем
+   protected int teleportCheckDeadline = -1;
 
     protected boolean connected = true;
     protected final InetSocketAddress rawSocketAddress;
@@ -1116,54 +1118,56 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     }
 
     protected void sendNextChunk() {
-        if (!this.connected) {
-            return;
-        }
+    if (!this.connected) {
+        return;
+    }
 
-        if (!loadQueue.isEmpty()) {
-            int count = 0;
-            LongIterator iter = loadQueue.longIterator();
-            while (iter.hasNext()) {
-                if (count >= server.getSettings().world().chunk().sendingPerTick()) {
-                    break;
-                }
+    if (!loadQueue.isEmpty()) {
+        int count = 0;
+        LongIterator iter = loadQueue.longIterator();
+        while (iter.hasNext()) {
+            if (count >= server.getSettings().world().chunk().sendingPerTick()) {
+                break;
+            }
 
-                long index = iter.nextLong();
-                int chunkX = Level.getHashX(index);
-                int chunkZ = Level.getHashZ(index);
+            long index = iter.nextLong();
+            int chunkX = Level.getHashX(index);
+            int chunkZ = Level.getHashZ(index);
 
-                ++count;
+            ++count;
 
-                try {
-                    this.usedChunks.put(index, false);
-                    this.level.registerChunkLoader(this, chunkX, chunkZ, false);
+            try {
+                this.usedChunks.put(index, false);
+                this.level.registerChunkLoader(this, chunkX, chunkZ, false);
 
-                    if (!this.level.populateChunk(chunkX, chunkZ)) {
-                        if (this.spawned && this.teleportPosition == null) {
-                            continue;
-                        } else {
-                            break;
-                        }
+                if (!this.level.populateChunk(chunkX, chunkZ)) {
+                    // FIX: не прерываем цикл из-за teleportPosition — просто пропускаем этот чанк,
+                    // чтобы остальные чанки всё равно отправились клиенту.
+                    if (this.spawned) {
+                        continue;
+                    } else {
+                        break;
                     }
-
-                    iter.remove();
-                } catch (Exception ex) {
-                    server.getLogger().logException(ex);
-                    return;
                 }
 
-                PlayerChunkRequestEvent ev = new PlayerChunkRequestEvent(this, chunkX, chunkZ);
-                if (ev.call()) {
-                    this.level.requestChunk(chunkX, chunkZ, this);
-                }
+                iter.remove();
+            } catch (Exception ex) {
+                server.getLogger().logException(ex);
+                return;
+            }
+
+            PlayerChunkRequestEvent ev = new PlayerChunkRequestEvent(this, chunkX, chunkZ);
+            if (ev.call()) {
+                this.level.requestChunk(chunkX, chunkZ, this);
             }
         }
-
-        if (!this.hasSpawnChunks && this.chunksSent >= server.getSettings().world().chunk().spawnChunksThreshold()) {
-            this.hasSpawnChunks = true;
-            this.sendPlayStatus(PlayStatusPacket.PLAYER_SPAWN);
-        }
     }
+
+    if (!this.hasSpawnChunks && this.chunksSent >= server.getSettings().world().chunk().spawnChunksThreshold()) {
+        this.hasSpawnChunks = true;
+        this.sendPlayStatus(PlayStatusPacket.PLAYER_SPAWN);
+    }
+}
 
     protected void doFirstSpawn() {
         this.locallyInitialized = true;
@@ -2438,7 +2442,16 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
             }
         }
 
-        this.checkTeleportPosition();
+        // FIX: проверяем телепорт + дедлайн. Если чанки не ушли за 20 тиков — принудительно
+// завершаем телепорт, чтобы teleportPosition не висел вечно и не блокировал движение.
+if (this.teleportPosition != null) {
+    if (!this.checkTeleportPosition() && this.teleportCheckDeadline > 0 && this.server.getTick() > this.teleportCheckDeadline) {
+        this.teleportPosition = null;
+        this.teleportCheckDeadline = -1;
+    }
+} else {
+    this.teleportCheckDeadline = -1;
+}
 
         /*if (currentTick % 20 == 0) {
             this.checkInteractNearby();
@@ -4474,29 +4487,29 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     }
 
     protected boolean checkTeleportPosition(boolean enderPearl) {
-        if (this.teleportPosition != null) {
-            int chunkX = (int) this.teleportPosition.x >> 4;
-            int chunkZ = (int) this.teleportPosition.z >> 4;
+    if (this.teleportPosition != null) {
+        int chunkX = (int) this.teleportPosition.x >> 4;
+        int chunkZ = (int) this.teleportPosition.z >> 4;
 
-            for (int X = -1; X <= 1; ++X) {
-                for (int Z = -1; Z <= 1; ++Z) {
-                    long index = Level.chunkHash(chunkX + X, chunkZ + Z);
-                    if (!this.usedChunks.containsKey(index) || !this.usedChunks.get(index)) {
-                        return false;
-                    }
-                }
+        for (int X = -1; X <= 1; ++X) {
+            for (int Z = -1; Z <= 1; ++Z) {
+                long index = Level.chunkHash(chunkX + X, chunkZ + Z);
+                if (!this.usedChunks.containsKey(index)) {
+    return false;
+}
             }
-
-            this.spawnToAll();
-            if (!enderPearl) {
-                this.forceMovement = this.teleportPosition;
-            }
-            this.teleportPosition = null;
-            return true;
         }
 
-        return false;
+        this.spawnToAll();
+        if (!enderPearl) {
+            this.forceMovement = this.teleportPosition;
+        }
+        this.teleportPosition = null;
+        return true;
     }
+
+    return false;
+}
 
     protected void sendPlayStatus(int status) {
         sendPlayStatus(status, false);
@@ -4514,49 +4527,49 @@ public class Player extends EntityHuman implements CommandSender, InventoryHolde
     }
 
     @Override
-    public boolean teleport(Location location, TeleportCause cause) {
-        if (!this.isOnline()) {
-            return false;
-        }
-
-        Location from = this.getLocation();
-        Location to = location;
-
-        if (cause != null) {
-            PlayerTeleportEvent event = new PlayerTeleportEvent(this, from, to, cause);
-            if (!event.call()) return false;
-            to = event.getTo();
-        }
-
-        // HACK: solve the client-side teleporting bug (inside into the block)
-        if (super.teleport(to.getY() == to.getFloorY() ? to.add(0, 0.00001, 0) : to, null)) { // null to prevent fire of duplicate EntityTeleportEvent
-            this.removeAllWindows();
-            this.formOpen = false;
-
-            this.lastTeleportTick = this.server.getTick();
-            this.teleportPosition = this;
-            if (cause != TeleportCause.ENDER_PEARL) {
-                this.forceMovement = this.teleportPosition;
-            }
-
-            if (this.dimensionChangeInProgress) {
-                this.dimensionChangeInProgress = false;
-            } else {
-                this.sendPosition(this, this.yaw, this.pitch, MovePlayerPacket.MODE_TELEPORT);
-                this.checkTeleportPosition(cause == TeleportCause.ENDER_PEARL);
-                this.dummyBossBars.values().forEach(DummyBossBar::reshow);
-            }
-
-            this.resetFallDistance();
-            this.nextChunkOrderRun = 0;
-            this.resetClientMovement();
-
-            this.stopFishing(false);
-            return true;
-        }
-
+public boolean teleport(Location location, TeleportCause cause) {
+    if (!this.isOnline()) {
         return false;
     }
+
+    Location from = this.getLocation();
+    Location to = location;
+
+    if (cause != null) {
+        PlayerTeleportEvent event = new PlayerTeleportEvent(this, from, to, cause);
+        if (!event.call()) return false;
+        to = event.getTo();
+    }
+
+    // HACK: solve the client-side teleporting bug (inside into the block)
+    if (super.teleport(to.getY() == to.getFloorY() ? to.add(0, 0.00001, 0) : to, null)) { // null to prevent fire of duplicate EntityTeleportEvent
+        this.removeAllWindows();
+        this.formOpen = false;
+
+        this.lastTeleportTick = this.server.getTick();
+        this.teleportPosition = this;
+        if (cause != TeleportCause.ENDER_PEARL) {
+            this.forceMovement = this.teleportPosition;
+        }
+
+        if (this.dimensionChangeInProgress) {
+            this.dimensionChangeInProgress = false;
+        } else {
+   this.sendPosition(this, this.yaw, this.pitch, MovePlayerPacket.MODE_TELEPORT);
+   this.teleportCheckDeadline = this.server.getTick() + 20;   // ← ВМЕСТО checkTeleportPosition
+   this.dummyBossBars.values().forEach(DummyBossBar::reshow);
+        }
+
+        this.resetFallDistance();
+        this.nextChunkOrderRun = 0;
+        this.resetClientMovement();
+
+        this.stopFishing(false);
+        return true;
+    }
+
+    return false;
+}
 
     protected void forceSendEmptyChunks() {
         int chunkPositionX = this.getFloorX() >> 4;
