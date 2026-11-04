@@ -104,13 +104,21 @@ public class PlayerAuthInputProcessor extends DataPacketProcessor<PlayerAuthInpu
             return;
         }
 
+        // ==================== FIX: TELEPORT ====================
         if (handle.getTeleportPosition() != null) {
             if (handle.getLastTeleportTick() != -1
                     && packet.getInputData().contains(AuthInputAction.HANDLE_TELEPORT)) {
                 handle.setLastTeleportTick(-1);
+                // Клиент подтвердил телепорт — сбрасываем teleportPosition
+                // и НЕ выходим, чтобы применить позицию из пакета ниже.
+                handle.setTeleportPosition(null);
+                handle.setForceMovement(null);
+            } else {
+                // Клиент ещё не подтвердил телепорт — ждём.
+                return;
             }
-            return;
         }
+        // ==================== END FIX ====================
 
         boolean ignoreCoordinateMove = false;
 
@@ -136,7 +144,6 @@ public class PlayerAuthInputProcessor extends DataPacketProcessor<PlayerAuthInpu
                 moveVecY = NukkitMath.clamp(moveVecY, -1, 1);
                 boolean isMobileAndClassicMovement = packet.getInputMode() == InputMode.TOUCH && packet.getInteractionModel() == AuthInteractionModel.CLASSIC;
                 if (isMobileAndClassicMovement) {
-                    // Press both left and right to move forward and press 1 to turn the boat.
                     boolean left = packet.getInputData().contains(AuthInputAction.PADDLE_LEFT), right = packet.getInputData().contains(AuthInputAction.PADDLE_RIGHT);
                     if (left && right) {
                         boat.onPlayerInput(handle.player, 0, 1);
@@ -516,5 +523,3 @@ public class PlayerAuthInputProcessor extends DataPacketProcessor<PlayerAuthInpu
         return PlayerAuthInputPacket.class;
     }
 }
-
-
