@@ -71,6 +71,12 @@ public final class PlayerHandle {
         return player.teleportPosition;
     }
 
+    // ==================== FIX: добавлен метод ====================
+    public void setTeleportPosition(Vector3 position) {
+        player.teleportPosition = position;
+    }
+    // ==================== END FIX ====================
+
     public String getUsername() {
         return player.username;
     }
