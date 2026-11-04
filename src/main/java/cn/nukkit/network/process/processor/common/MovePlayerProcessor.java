@@ -24,12 +24,16 @@ public class MovePlayerProcessor extends DataPacketProcessor<MovePlayerPacket> {
             return;
         }
 
-        if (handle.getTeleportPosition() != null
-                || !handle.isSpawned()
+        // ==================== FIX: TELEPORT ====================
+        // Убрали `handle.getTeleportPosition() != null` из условия.
+        // При client-auth клиент УЖЕ применил MODE_TELEPORT и шлёт MovePlayerPacket.
+        // Сервер ДОЛЖЕН применить его, даже если teleportPosition ещё не сброшен.
+        if (!handle.isSpawned()
                 || handle.isMovementServerAuthoritative()
                 || handle.isLockMovementInput()) {
             return;
         }
+        // ==================== END FIX ====================
 
         Vector3 newPos = new Vector3(
                 packet.x,
