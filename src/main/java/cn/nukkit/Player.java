@@ -4495,8 +4495,8 @@ if (this.teleportPosition != null) {
             for (int Z = -1; Z <= 1; ++Z) {
                 long index = Level.chunkHash(chunkX + X, chunkZ + Z);
                 if (!this.usedChunks.containsKey(index)) {
-    return false;
-}
+                    return false;
+                }
             }
         }
 
@@ -4504,6 +4504,12 @@ if (this.teleportPosition != null) {
         if (!enderPearl) {
             this.forceMovement = this.teleportPosition;
         }
+
+        // ★ ФИКС: повторно отправляем позицию ПОСЛЕ загрузки чанков.
+        // Без этого клиент получает MovePlayerPacket(MODE_TELEPORT) ДО чанков
+        // и игнорирует его → игрок «остаётся на месте», хотя сервер его телепортировал.
+        this.sendPosition(this.teleportPosition, this.yaw, this.pitch, MovePlayerPacket.MODE_TELEPORT);
+
         this.teleportPosition = null;
         return true;
     }
